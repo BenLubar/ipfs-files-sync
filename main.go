@@ -176,7 +176,7 @@ func addFile(ctx context.Context, ipfs *shell.Shell, localPath, remotePath strin
 	slf := files.NewSliceDirectory([]files.DirEntry{files.FileEntry("", fr)})
 	fileReader := files.NewMultiFileReader(slf, true)
 
-	if err := ipfs.Request("files/write", remotePath).Body(fileReader).Option("flush", flushDepth >= 0).Option("create", true).Option("truncate", true).Option("parents", true).Option("raw-leaves", true).Exec(ctx, nil); err != nil {
+	if err := ipfs.Request("files/write", remotePath).Body(fileReader).Option("flush", flushDepth >= 0).Option("create", true).Option("truncate", true).Option("parents", true).Exec(ctx, nil); err != nil {
 		return errors.Wrapf(err, "addFile(%q, %q): write", localPath, remotePath)
 	}
 
