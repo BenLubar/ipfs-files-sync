@@ -85,6 +85,13 @@ func walk(ctx context.Context, ipfs *shell.Shell, src, dest string, flushDepth i
 
 		children[dir] = true
 	}
+
+	if len(dirs) == 0 && len(files) != 0 {
+		if err := ipfs.Request("files/mkdir", dest).Option("flush", false).Option("parents", true).Exec(ctx, nil); err != nil {
+			return errors.Wrapf(err, "mkdir -p %q", dest)
+		}
+	}
+
 	for _, fi := range files {
 		name := fi.Name()
 		if err := addFile(ctx, ipfs, filepath.Join(src, name), path.Join(dest, name), flushDepth-1); err != nil {
@@ -109,10 +116,6 @@ func walk(ctx context.Context, ipfs *shell.Shell, src, dest string, flushDepth i
 			return err
 		}
 	} else {
-		if err := ipfs.Request("files/mkdir", dest).Option("flush", false).Option("parents", true).Exec(ctx, nil); err != nil {
-			return errors.Wrapf(err, "mkdir -p %q", dest)
-		}
-
 		var existingFiles struct {
 			Entries []UnixFSEntry
 		}
@@ -185,8 +188,6 @@ func addFile(ctx context.Context, ipfs *shell.Shell, localPath, remotePath strin
 			log.Println("SAME", remotePath)
 			return nil
 		}
-
-		log.Println("HASH", string(originalHash[:sz]), hash)
 	}
 
 	if err := ipfs.Request("files/rm", remotePath).Option("flush", false).Option("recursive", true).Exec(ctx, nil); err != nil {
