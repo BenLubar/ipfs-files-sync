@@ -12,7 +12,6 @@ import (
 	"syscall"
 
 	shell "github.com/ipfs/go-ipfs-api"
-	files "github.com/ipfs/go-ipfs-files"
 	"github.com/pkg/errors"
 )
 
@@ -110,6 +109,10 @@ func walk(ctx context.Context, ipfs *shell.Shell, src, dest string, flushDepth i
 			return err
 		}
 	} else {
+		if err := ipfs.Request("files/mkdir", dest).Option("flush", false).Option("parents", true).Exec(ctx, nil); err != nil {
+			return errors.Wrapf(err, "mkdir -p %q", dest)
+		}
+
 		var existingFiles struct {
 			Entries []UnixFSEntry
 		}
@@ -169,28 +172,29 @@ func addFile(ctx context.Context, ipfs *shell.Shell, localPath, remotePath strin
 	if err != nil {
 		return errors.Wrapf(err, "addFile(%q, %q): open", localPath, remotePath)
 	}
-	// f will be closed by the wrapper.
-	fr := files.NewReaderFile(f)
-	slf := files.NewSliceDirectory([]files.DirEntry{files.FileEntry("", fr)})
-	fileReader := files.NewMultiFileReader(slf, true)
+	// f will be closed by ipfs.Add
 
-	if err := ipfs.Request("files/write", remotePath).Body(fileReader).Option("flush", flushDepth >= 0).Option("create", true).Option("truncate", true).Option("parents", true).Exec(ctx, nil); err != nil {
+	hash, err := ipfs.Add(f, shell.Pin(false))
+	if err != nil {
 		return errors.Wrapf(err, "addFile(%q, %q): write", localPath, remotePath)
-	}
-
-	var stat struct {
-		Hash string
-	}
-	if err := ipfs.Request("files/stat", remotePath).Option("flush", false).Exec(ctx, &stat); err != nil {
-		return errors.Wrapf(err, "addFile(%q, %q): stat", localPath, remotePath)
 	}
 
 	var originalHash [256]byte
 	if sz, err := syscall.Getxattr(localPath, "user.ipfs-hash", originalHash[:]); err == nil {
-		if sz == len(stat.Hash) && string(originalHash[:sz]) == stat.Hash {
+		if sz == len(hash) && string(originalHash[:sz]) == hash {
 			log.Println("SAME", remotePath)
 			return nil
 		}
+
+		log.Println("HASH", string(originalHash[:sz]), hash)
+	}
+
+	if err := ipfs.Request("files/rm", remotePath).Option("flush", false).Option("recursive", true).Exec(ctx, nil); err != nil {
+		_ = err // TODO: do we need to handle this?
+	}
+
+	if err := ipfs.Request("files/cp", "/ipfs/"+hash, remotePath).Option("flush", flushDepth >= 0).Exec(ctx, nil); err != nil {
+		return errors.Wrapf(err, "addFile(%q, %q): copy", localPath, remotePath)
 	}
 
 	log.Println("FILE", remotePath)
@@ -198,5 +202,5 @@ func addFile(ctx context.Context, ipfs *shell.Shell, localPath, remotePath strin
 		log.Println("FLUSH", remotePath)
 	}
 
-	return errors.Wrapf(syscall.Setxattr(localPath, "user.ipfs-hash", []byte(stat.Hash), 0), "addFile(%q, %q): cache hash", localPath, remotePath)
+	return errors.Wrapf(syscall.Setxattr(localPath, "user.ipfs-hash", []byte(hash), 0), "addFile(%q, %q): cache hash", localPath, remotePath)
 }
