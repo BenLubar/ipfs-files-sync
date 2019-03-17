@@ -129,8 +129,6 @@ func walk(ctx context.Context, ipfs *shell.Shell, src, dest string, flushDepth i
 		}
 	}
 
-	log.Println("DIR", dest)
-
 	if flushDepth >= 0 {
 		if err := ipfs.Request("files/flush", dest).Exec(ctx, nil); err != nil {
 			return errors.Wrapf(err, "flush %q", dest)
@@ -185,6 +183,14 @@ func addFile(ctx context.Context, ipfs *shell.Shell, localPath, remotePath strin
 	}
 	if err := ipfs.Request("files/stat", remotePath).Option("flush", false).Exec(ctx, &stat); err != nil {
 		return errors.Wrapf(err, "addFile(%q, %q): stat", localPath, remotePath)
+	}
+
+	var originalHash [256]byte
+	if sz, err := syscall.Getxattr(localPath, "user.ipfs-hash", originalHash[:]); err == nil {
+		if sz == len(stat.Hash) && string(originalHash[:sz]) == stat.Hash {
+			log.Println("SAME", remotePath)
+			return nil
+		}
 	}
 
 	log.Println("FILE", remotePath)
