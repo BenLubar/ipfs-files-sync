@@ -1,0 +1,7 @@
+#!/bin/bash -e
+
+[[ "$#" -eq 1 ]] || { echo "Usage: $0 [key-name]"; exit 1; }
+
+ipfs key list | fgrep -q "$1" || { echo "Key not found: $1"; exit 1; }
+
+ipfs name publish --allow-offline --key="$1" /ipfs/"$(ipfs files stat --hash /data/"$1")"
